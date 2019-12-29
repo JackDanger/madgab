@@ -21,8 +21,8 @@ module Madgab
 
     def to_s
       "<SearchEntry:#{object_id} #{full_ipa_phrase(' ').inspect} " \
-        " (#{full_english_phrase.inspect}) score: #{score} " \
-        " lev: #{phonetic_levenshtein_distance}, popularity: #{popularity_boost}, chain size penalty: #{entry_chain_size_penalty}" \
+        " (#{full_english_phrase.inspect}) score: #{'%0.3f' % score} " \
+        " lev: #{'%0.3f' % phonetic_levenshtein_distance}, popularity: #{'%0.3f' % popularity_boost}, chain size penalty: #{entry_chain_size_penalty}" \
         "#{subtrie && ", path: #{subtrie[:path]}"}>"
     end
     alias inspect to_s
@@ -33,7 +33,7 @@ module Madgab
     end
 
     def hash
-      [
+      @hash ||= [
         full_ipa_phrase(' '),
         full_english_phrase(' '),
         match,
@@ -46,9 +46,17 @@ module Madgab
       @full_ipa_phrase[delimiter] ||= entry_chain.map(&:match).compact.join(delimiter)
     end
 
+    def padded_full_ipa_phrase
+      full_ipa_phrase + ('ə' * [0, target.size - full_ipa_phrase.size].max)
+    end
+
     def full_english_phrase(delimiter = ' ')
       @full_english_phrase ||= {}
       @full_english_phrase[delimiter] ||= words.join(delimiter)
+    end
+
+    def phonetic_levenshtein_distance
+      @phonetic_levenshtein_distance ||=  Phonetics::Levenshtein.distance(padded_full_ipa_phrase, target)
     end
 
     def penalties
@@ -60,7 +68,7 @@ module Madgab
     end
 
     def entry_chain_size_penalty
-      entry_chain.size * 0.5
+      entry_chain.size * 0.01
     end
 
     def stutter_penalty
@@ -71,21 +79,6 @@ module Madgab
       end
 
       0.0
-    end
-
-    def phonetic_levenshtein_distance
-      Phonetics::Levenshtein.distance(full_ipa_phrase, target)
-    end
-
-    def levenshtein_distance
-      DamerauLevenshtein.distance(full_ipa_phrase, target)
-    end
-
-    def hamming_distance_of_shared_substring
-      s1 = target
-      s2 = full_ipa_phrase
-      s1, s2 = s2, s1 if s1.size < s2.size
-      s1.bytes[0..(s2.bytes.size - 1)].zip(s2.bytes).reject { |a, b| a == b }.size
     end
 
     # Give a boost for using more popular words
@@ -117,11 +110,12 @@ module Madgab
     end
 
     def word
-      words.first
+      return @word if defined?(@word)
+      @word ||= word_data && word_data.min_by { |w| w[:rarity] }[:word]
     end
 
     def words
-      word_datas.map {|word_data| word_data[:word] }
+      entry_chain.map(&:word)
     end
 
     def word_datas
