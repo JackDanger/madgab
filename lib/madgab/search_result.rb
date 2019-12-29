@@ -1,4 +1,4 @@
-module IPA
+module Madgab
   class SearchResult
     attr_reader :results, :time
     def initialize(results:, time:)

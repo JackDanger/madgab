@@ -2,13 +2,14 @@ require_relative 'search_result'
 require_relative 'search_entry'
 require 'fc'
 
-module IPA
+module Madgab
   class Search
 
     attr_reader :input,
                 :timeout_seconds,
                 :exclude,
                 :frontier,
+                :visited,
                 :min_results,
                 :results
 
@@ -34,21 +35,21 @@ module IPA
     def perform
       @timeout_start = Time.now
       puts "Searching for #{@target}"
-      prime = SearchEntry.new(nil, @target, nil, {}, nil)
+      prime = SearchEntry.new(nil, @target, Phonetics::Transcriptions.trie, nil)
       log "priming: #{prime}"
       ticked = 0
       frontier.push prime, prime.score
 
-      @visited = 0
+      @visited = Set.new
       @results = Set.new
 
       begin
         search_entry = frontier.pop
-        @visited += 1
+        @visited << search_entry
 
         seconds_since_start = (Time.now - @timeout_start).to_i
         if seconds_since_start > ticked
-          puts("#{@visited}/#{@frontier.size} - #{results.size} results, current entry:\n\t#{search_entry}")
+          puts("#{@visited.size}/#{@frontier.size} - #{results.size} results, current entry:\n\t#{search_entry}")
           ticked += 1
         end
 
@@ -56,39 +57,35 @@ module IPA
         log search_entry.to_s
         log "frontier size: #{@frontier.size}"
 
-        # require 'pry'
-        # binding.pry
-        # require 'benchmark'
-        # entries = IPA.transcriptions.flat_map do |word, data|
-        #   next unless data['rarity'] && data['rarity'] < 30_000
-        #   data['ipa'].map do |source, ipa|
-        #     new_entry = SearchEntry.new(
-        #       ipa,
-        #       @target,
-        #       word,
-        #       data,
-        #       search_entry
-        #     )
-        #   end
-        # end.compact
-        # Benchmark.measure { entries.take(10_000).map(&:score) }
+        search_entry.subtrie.each do |key, subtrie|
+          next if key == :path
+          next if key == :depth
 
-        IPA.transcriptions.each do |word, data|
-          next unless data['rarity'] && data['rarity'] < 30_000
-          data['ipa'].each do |source, ipa|
+          # We've reached the end of a word, continue with a pointer to the
+          # top of the trie
+          if key == :terminal
             new_entry = SearchEntry.new(
-              ipa,
-              @target,
-              word,
-              data,
-              search_entry
+              search_entry.match,
+              search_entry.target,
+              Phonetics::Transcriptions.trie,
+              search_entry,
             )
-            log "[terminal] enqueueing: #{new_entry}"
-            frontier.push(new_entry, new_entry.score)
+          else
+            new_entry = SearchEntry.new(
+              "#{search_entry.match}#{key}",
+              @target,
+              subtrie,
+              search_entry.previous_entry,
+            )
           end
-        end
-      end until frontier.empty? #|| (timeout? && collected?)
 
+          log "enqueueing: #{new_entry}"
+          frontier.push(new_entry, new_entry.score)
+        end
+      end until frontier.empty? || timeout? #&& collected?)
+
+      require 'pry'
+      binding.pry
       nil
     end
     private

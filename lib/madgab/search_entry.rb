@@ -1,18 +1,16 @@
 require 'phonetics/levenshtein'
-module IPA
+module Madgab
   class SearchEntry
     attr_accessor :match,
                   :target,
-                  :word,
-                  :word_data,
+                  :subtrie,
                   :previous_entry
 
-    def initialize(match, target, word, word_data, previous_entry = nil)
+    def initialize(match, target, subtrie, previous_entry = nil)
       @match = match
       @target = target
+      @subtrie = subtrie
       @previous_entry = previous_entry
-      @word = word
-      @word_data = word_data
     end
 
     # Rank search entries in the fibonacci heap of the priority queue by
@@ -25,20 +23,13 @@ module IPA
       "<SearchEntry:#{object_id} #{full_ipa_phrase(' ').inspect} " \
         " (#{full_english_phrase.inspect}) score: #{score} " \
         " lev: #{phonetic_levenshtein_distance}, popularity: #{popularity_boost}, chain size penalty: #{entry_chain_size_penalty}" \
-        "#{word && ", word: #{word.inspect}"}>"
-    rescue StandardError => e
-      p e
-      require 'pry'
-      binding.pry
-
-      p e
+        "#{subtrie && ", path: #{subtrie[:path]}"}>"
     end
     alias inspect to_s
 
     # lower score is better
     def score
-      @score ||= phonetic_levenshtein_distance
-      # @score ||= levenshtein_distance
+      @score ||= phonetic_levenshtein_distance + penalties
     end
 
     def hash
@@ -46,7 +37,6 @@ module IPA
         full_ipa_phrase(' '),
         full_english_phrase(' '),
         match,
-        word,
       ].join(',').hash
     end
 
@@ -58,15 +48,29 @@ module IPA
 
     def full_english_phrase(delimiter = ' ')
       @full_english_phrase ||= {}
-      @full_english_phrase[delimiter] ||= entry_chain.map(&:word).join(delimiter)
+      @full_english_phrase[delimiter] ||= words.join(delimiter)
     end
 
     def penalties
-      entry_chain.select(&:penalty).size * 0.1
+      entry_chain.map(&:penalty).reduce(&:+)
+    end
+
+    def penalty
+      entry_chain_size_penalty + stutter_penalty
     end
 
     def entry_chain_size_penalty
-      entry_chain.size * 0.01
+      entry_chain.size * 0.5
+    end
+
+    def stutter_penalty
+      return 0.0 unless words.size > 1
+
+      if words.first == words[1]
+        2.0
+      end
+
+      0.0
     end
 
     def phonetic_levenshtein_distance
@@ -89,7 +93,7 @@ module IPA
     def popularity_boost
       return 0 if word_datas.empty?
 
-      rare_words = word_datas.select { |word| word[:rarity] }
+      rare_words = word_datas.select { |data| data[:rarity] }
       return 0 if rare_words.empty?
 
       # 0-1 score for popularity
@@ -112,12 +116,20 @@ module IPA
       end.reduce(0, &:+)
     end
 
+    def word
+      words.first
+    end
+
     def words
-      entry_chain.map &:word
+      word_datas.map {|word_data| word_data[:word] }
     end
 
     def word_datas
-      entry_chain.map &:word_data
+      entry_chain.flat_map(&:word_data).compact
+    end
+
+    def word_data
+      subtrie[:terminal]
     end
 
     def entry_chain
