@@ -44,10 +44,14 @@ pub struct Clue {
 pub struct ClueWord {
     /// English headword.
     pub word: String,
-    /// IPA span this word covers.
+    /// IPA span this word's transcription covers (which may differ
+    /// from the target's span in Approximate mode).
     pub ipa: String,
     /// Frequency rank from the corpus, if known.
     pub rarity: Option<f64>,
+    /// Accumulated substitution cost relative to the target's span
+    /// of the IPA stream this word covers. Always 0.0 in Exact mode.
+    pub sub_cost: f64,
 }
 
 /// Search behavior.
@@ -57,6 +61,28 @@ pub enum SearchMode {
     /// target stream. The clue is a re-syllabification of the same
     /// phonemes; phonetic similarity is by construction 1.0.
     Exact,
+    /// Each clue word's IPA is allowed to differ from its span of
+    /// the target by up to `per_word_budget` of accumulated
+    /// phonetic-distance cost; the whole clue's accumulated cost is
+    /// capped at `total_budget`. Lets the generator find clues
+    /// whose phonemes don't exactly match — /t/→/d/, /ɪ/→/i/, etc.
+    Approximate {
+        /// Maximum substitution cost per single trie-walked word.
+        per_word_budget: f64,
+        /// Maximum substitution cost summed across the whole clue.
+        total_budget: f64,
+    },
+}
+
+impl SearchMode {
+    /// A sensible Approximate default — small per-word slack with a
+    /// total cap that still keeps the clue recognizable.
+    pub fn approximate() -> Self {
+        Self::Approximate {
+            per_word_budget: 0.5,
+            total_budget: 1.5,
+        }
+    }
 }
 
 /// Search configuration. Defaults are tuned for an interactive
@@ -140,6 +166,13 @@ impl Generator {
         let mut beam: Vec<Vec<Partial>> = vec![Vec::new(); n + 1];
         beam[0].push(Partial::empty());
 
+        // Total-cost cap for Approximate mode; serves as a hard
+        // prune on partials that have already overshot the budget.
+        let total_budget = match self.config.mode {
+            SearchMode::Exact => 0.0,
+            SearchMode::Approximate { total_budget, .. } => total_budget,
+        };
+
         for p in 0..n {
             if beam[p].is_empty() {
                 continue;
@@ -147,21 +180,52 @@ impl Generator {
             // Take ownership of the beam-at-p so we can mutate beam[p..] freely.
             let here = std::mem::take(&mut beam[p]);
             for partial in &here {
-                for (consumed, pronunciation) in self.corpus.trie.words_starting_at(&chars, p) {
-                    if consumed < self.config.min_word_ipa_chars {
-                        continue;
+                let remaining_budget = total_budget - partial.sub_cost_total;
+                match self.config.mode {
+                    SearchMode::Exact => {
+                        for (consumed, pronunciation) in self.corpus.trie.words_starting_at(&chars, p) {
+                            if consumed < self.config.min_word_ipa_chars {
+                                continue;
+                            }
+                            let next = partial.extend(pronunciation, consumed, 0.0);
+                            insert_top_k(&mut beam[p + consumed], next, self.config.beam_width);
+                        }
                     }
-                    let next = partial.extend(pronunciation, p + consumed);
-                    let target_slot = p + consumed;
-                    insert_top_k(&mut beam[target_slot], next, self.config.beam_width);
+                    SearchMode::Approximate { per_word_budget, .. } => {
+                        let budget = per_word_budget.min(remaining_budget.max(0.0));
+                        if budget <= 0.0 {
+                            // Falling back to exact-only walk when the
+                            // remaining budget is exhausted.
+                            for (consumed, pronunciation) in self.corpus.trie.words_starting_at(&chars, p) {
+                                if consumed < self.config.min_word_ipa_chars {
+                                    continue;
+                                }
+                                let next = partial.extend(pronunciation, consumed, 0.0);
+                                insert_top_k(&mut beam[p + consumed], next, self.config.beam_width);
+                            }
+                            continue;
+                        }
+                        let matches = self.corpus.trie.words_approximately_starting_at(
+                            &chars,
+                            p,
+                            budget,
+                            |target_c, trie_c| {
+                                phonetics::distance(&target_c.to_string(), &trie_c.to_string())
+                            },
+                        );
+                        for (consumed, pronunciation, word_cost) in matches {
+                            if consumed < self.config.min_word_ipa_chars {
+                                continue;
+                            }
+                            let next = partial.extend(pronunciation, consumed, word_cost);
+                            insert_top_k(&mut beam[p + consumed], next, self.config.beam_width);
+                        }
+                    }
                 }
             }
         }
 
         let mut completed = std::mem::take(&mut beam[n]);
-        // Convert partials → clues with full scoring (the partial's
-        // running score is a cheap proxy; full score adds boundary
-        // novelty which needs the final word list).
         let mut clues: Vec<Clue> = completed
             .drain(..)
             .map(|p| p.into_clue(&target_ipa, &target_boundaries, &target_words))
@@ -203,6 +267,9 @@ fn transcribe_with_boundaries(corpus: &Corpus, phrase: &str) -> Option<(String, 
 #[derive(Debug, Clone)]
 struct Partial {
     words: Vec<ClueWord>,
+    /// Accumulated substitution cost across all words so far.
+    /// Always zero in Exact mode.
+    sub_cost_total: f64,
     /// Running cheap score: rolling sum of per-word rarity penalties
     /// + word-length bonuses, used only to prune the beam. The final
     /// Clue score replaces this with the full novelty-aware score.
@@ -213,17 +280,21 @@ impl Partial {
     fn empty() -> Self {
         Self {
             words: Vec::new(),
+            sub_cost_total: 0.0,
             cheap_score: 0.0,
         }
     }
 
-    fn extend(&self, p: &Pronunciation, _new_boundary: usize) -> Self {
-        let consumed = p.ipa.chars().count();
-        let word_bonus = (consumed as f64).min(6.0) / 6.0;
+    fn extend(&self, p: &Pronunciation, _consumed: usize, word_sub_cost: f64) -> Self {
+        let len = p.ipa.chars().count();
+        let word_bonus = (len as f64).min(6.0) / 6.0;
         let rarity_penalty = match p.rarity {
             Some(r) if r > 5_000.0 => -((r / 50_000.0).min(1.0)),
             _ => 0.0,
         };
+        // Approximate-mode penalty: each unit of substitution cost
+        // shaves cheap_score so the beam prefers closer matches.
+        let approx_penalty = word_sub_cost;
         Self {
             words: {
                 let mut w = self.words.clone();
@@ -231,10 +302,12 @@ impl Partial {
                     word: p.word.clone(),
                     ipa: p.ipa.clone(),
                     rarity: p.rarity,
+                    sub_cost: word_sub_cost,
                 });
                 w
             },
-            cheap_score: self.cheap_score + word_bonus + rarity_penalty,
+            sub_cost_total: self.sub_cost_total + word_sub_cost,
+            cheap_score: self.cheap_score + word_bonus + rarity_penalty - approx_penalty,
         }
     }
 
@@ -282,7 +355,17 @@ impl Partial {
             / self.words.len().max(1) as f64;
         let length_signal = (avg_word_ipa_len / 4.0).min(1.0);
 
-        let score = 0.55 * novelty + 0.30 * word_novelty + 0.15 * length_signal;
+        // Approximate-mode similarity: penalize total substitution
+        // cost. In Exact mode sub_cost_total is 0, so similarity is
+        // exactly 1.0 and this term is constant — the discrimination
+        // remains on the novelty/length axes as before.
+        let similarity = (1.0 - self.sub_cost_total / 4.0).clamp(0.0, 1.0);
+
+        let score =
+              0.40 * similarity
+            + 0.35 * novelty
+            + 0.15 * word_novelty
+            + 0.10 * length_signal;
 
         Clue {
             phrase: self.words.iter().map(|w| w.word.as_str()).collect::<Vec<_>>().join(" "),
