@@ -1,1 +1,2 @@
-ruby/madgab.log
+/target/
+Cargo.lock

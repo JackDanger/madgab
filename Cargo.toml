@@ -1,0 +1,21 @@
+[package]
+name = "madgab"
+description = "Mad Gab puzzle generator — transforms target English phrases into phonetically-similar but lexically-rearranged clues, using the phonetics-rs listener-confusion metric for scoring."
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Jack Danger <github@jackcanty.com>"]
+repository = "https://github.com/JackDanger/madgab"
+readme = "README.md"
+keywords = ["madgab", "puzzle", "phonetics", "ipa", "linguistics"]
+categories = ["games", "text-processing"]
+
+[dependencies]
+# During development we depend on the phonetics-rs crate by path so
+# changes propagate immediately. Before publishing, switch this to
+# `phonetics = { version = "0.3", package = "phonetics-rs", features = ["transcriptions"] }`.
+phonetics = { package = "phonetics-rs", path = "../phonetics/rust/phonetics", features = ["transcriptions"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
