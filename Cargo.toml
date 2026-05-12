@@ -11,10 +11,11 @@ keywords = ["madgab", "puzzle", "phonetics", "ipa", "linguistics"]
 categories = ["games", "text-processing"]
 
 [dependencies]
-# During development we depend on the phonetics-rs crate by path so
-# changes propagate immediately. Before publishing, switch this to
-# `phonetics = { version = "0.3", package = "phonetics-rs", features = ["transcriptions"] }`.
-phonetics = { package = "phonetics-rs", path = "../phonetics/rust/phonetics", features = ["transcriptions"] }
+# Pinned to the phonetics-rs git tip until 0.3.0 publishes — the
+# 0.2.0 release on crates.io doesn't yet expose the `transcriptions`
+# feature this crate needs. Once 0.3.0 ships, replace with:
+#   phonetics = { version = "0.3", package = "phonetics-rs", features = ["transcriptions"] }
+phonetics = { package = "phonetics-rs", git = "https://github.com/JackDanger/phonetics.git", branch = "main", features = ["transcriptions"] }
 
 [profile.release]
 lto = "thin"
