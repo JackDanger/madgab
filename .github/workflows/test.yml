@@ -1,0 +1,26 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: cargo test + clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo test
+        run: cargo test --no-fail-fast
+      - name: cargo clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: smoke test (CLI binary builds and runs)
+        run: |
+          cargo build --release
+          ./target/release/madgab --help
+          ./target/release/madgab --transcribe "cat dog"

@@ -154,7 +154,7 @@ impl Generator {
         };
         let target_words: HashSet<String> = target
             .split_whitespace()
-            .map(|w| w.to_lowercase().trim_end_matches(|c: char| matches!(c, '.' | ',' | '!' | '?')).to_string())
+            .map(|w| w.to_lowercase().trim_end_matches(['.', ',', '!', '?']).to_string())
             .collect();
         let chars: Vec<char> = target_ipa.chars().collect();
         let n = chars.len();
@@ -251,7 +251,7 @@ fn transcribe_with_boundaries(corpus: &Corpus, phrase: &str) -> Option<(String, 
     for word in phrase.split_whitespace() {
         let key = word
             .to_lowercase()
-            .trim_end_matches(|c: char| matches!(c, '.' | ',' | '!' | '?' | ';' | ':'))
+            .trim_end_matches(['.', ',', '!', '?', ';', ':'])
             .to_string();
         let ipa = corpus.preferred_ipa(&key)?;
         out.push_str(ipa);
@@ -270,9 +270,9 @@ struct Partial {
     /// Accumulated substitution cost across all words so far.
     /// Always zero in Exact mode.
     sub_cost_total: f64,
-    /// Running cheap score: rolling sum of per-word rarity penalties
-    /// + word-length bonuses, used only to prune the beam. The final
-    /// Clue score replaces this with the full novelty-aware score.
+    /// Running cheap score (per-word rarity penalties plus word-length
+    /// bonuses) used only to prune the beam. The final Clue score
+    /// replaces this with the full novelty-aware computation.
     cheap_score: f64,
 }
 
