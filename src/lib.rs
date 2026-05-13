@@ -111,9 +111,18 @@ impl Default for GeneratorConfig {
         Self {
             beam_width: 64,
             top_n: 10,
-            max_rarity: Some(20_000.0),
+            // The rebuilt fused corpus ranks ~280k words; the cap
+            // covers roughly the top 20% by frequency, which is wide
+            // enough to keep canonical Mad Gab clue words like
+            // "dupe" (rank ~40k) but tight enough to keep the trie
+            // small.
+            max_rarity: Some(50_000.0),
             mode: SearchMode::Exact,
-            min_word_ipa_chars: 2,
+            // 1 keeps legitimate single-segment morphemes ("a", "I",
+            // interjections like "uh", "ah", "sh") in play. The
+            // corpus build filters out fragment-only entries
+            // ('s, 't, 'd) so we don't pay for them in noise.
+            min_word_ipa_chars: 1,
         }
     }
 }

@@ -93,21 +93,38 @@ confusion metric — lives in
 [`phonetics-rs`](https://crates.io/crates/phonetics-rs). This crate is the
 search layer on top.
 
-## Quality notes
+## Corpus
 
-The embedded corpus has known limitations:
+The embedded `common_ipa_transcriptions.json` (~28 MB, ~280k words) is
+built from four open sources and ships under **CC-BY-SA 4.0**:
 
-- **CMU's transcriptions use ASCII-only IPA** (writing `i` for both tense /i/
-  and lax /ɪ/, `u` for both /u/ and /ʊ/, etc.). 90% of the corpus comes from
-  CMU. Target transcriptions look "simplified" as a result.
-- **Wiktionary has occasional broken entries** (e.g. "pie" → `piaɪi`).
-- **The corpus only has 6,010 phonemicchart entries** of ~142k total, so for
-  most words we're stuck with the CMU style.
+| Source | Role |
+|---|---|
+| [Misaki `us_gold`](https://github.com/hexgrad/misaki) (Apache 2.0) | Vetted narrow IPA. Highest quality core. |
+| [CMUdict 0.7b](https://github.com/cmusphinx/cmudict) (BSD) | Broad ARPABET, converted to IPA. Best long-tail coverage. |
+| Misaki `us_silver` (Apache 2.0) | Less-vetted near-IPA; gap fill. |
+| [WikiPron `eng_latn_us_broad`](https://github.com/CUNY-CL/wikipron) (CC-BY-SA) | Wiktionary scrape; pronunciation variants. |
 
-This affects which clues the generator can find. Future work: re-derive
-the corpus from a single high-quality source (epitran? phonemizer?) and
-retire the multi-source heuristic.
+WikiPron's copyleft is what binds the build to CC-BY-SA. Per-word
+rarity comes from the MIT-licensed
+[`wordfreq`](https://pypi.org/project/wordfreq/) package.
+
+The build pipeline lives in `corpus/` — see `corpus/README.md` for the
+recipe, including ARPABET→IPA conversion, Misaki near-IPA expansion,
+and WikiPron narrow-form stripping. To rebuild from sources:
+
+```bash
+python3 -m venv corpus/venv
+corpus/venv/bin/pip install wordfreq
+# Fetch the four source files into corpus/sources/ (see corpus/README.md)
+corpus/venv/bin/python corpus/build.py
+```
+
+The 15-MB v0.1 corpus this replaced used a single-source ARPABET-style
+transcription throughout, which collapsed `/i/` ↔ `/ɪ/` and `/u/` ↔
+`/ʊ/`. The new corpus preserves those narrow distinctions and adds
+~140k words of coverage. See `corpus/bench.py` for a side-by-side.
 
 ## License
 
-MIT.
+Code: MIT. Embedded corpus: CC-BY-SA 4.0 (see *Corpus* above).

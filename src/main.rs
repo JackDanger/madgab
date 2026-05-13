@@ -17,8 +17,10 @@ use std::process::ExitCode;
 
 use madgab::{Generator, GeneratorConfig, SearchMode};
 
-/// The IPA transcription corpus, embedded at compile time.
-/// 15 MB; expands the release binary correspondingly.
+/// The IPA transcription corpus, embedded at compile time. ~28 MB —
+/// the release binary carries it as a single literal so the CLI has
+/// zero on-disk dependencies. See `corpus/README.md` for the build
+/// recipe.
 const CORPUS_JSON: &str = include_str!("../data/common_ipa_transcriptions.json");
 
 const USAGE: &str = "\
@@ -29,9 +31,9 @@ Usage:
 
 Options:
   --top N            Return top N candidates (default 10).
-  --max-rarity R     Drop corpus words rarer than R (default 20000).
+  --max-rarity R     Drop corpus words rarer than R (default 50000).
   --beam K           Beam width during search (default 64).
-  --min-word-len N   Skip clue words with fewer than N IPA chars (default 2).
+  --min-word-len N   Skip clue words with fewer than N IPA chars (default 1).
   --approximate      Allow small phonetic substitutions (/t/→/d/, /ɪ/→/i/, etc.)
                      Lets the generator find clues whose phonemes don't exactly
                      match the target. Defaults are sensible; tune with the next
