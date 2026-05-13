@@ -11,7 +11,16 @@ keywords = ["madgab", "puzzle", "phonetics", "ipa", "linguistics"]
 categories = ["games", "text-processing"]
 
 [dependencies]
+# The Rust phonetic-distance core: Bark-space vowel metric,
+# 2D consonant place embedding, listener-confusion DP, and the
+# corpus/trie types that this crate's generator walks.
 phonetics = { package = "phonetics-rs", version = "0.3", features = ["transcriptions"] }
+# OpenEPD: the embedded ~280k-word US English IPA dictionary that
+# the generator searches for clue tilings. Used to live under
+# data/ + corpus/ in this repo; extracted in May 2026 because the
+# corpus has its own license (CC-BY-SA 4.0), its own refresh
+# cadence, and other downstream consumers besides Mad Gab.
+open-english-pronouncing-dictionary = "0.1"
 
 [profile.release]
 lto = "thin"
