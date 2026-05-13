@@ -17,11 +17,11 @@ use std::process::ExitCode;
 
 use madgab::{Generator, GeneratorConfig, SearchMode};
 
-/// The IPA transcription corpus, embedded at compile time. ~28 MB —
-/// the release binary carries it as a single literal so the CLI has
-/// zero on-disk dependencies. See `corpus/README.md` for the build
-/// recipe.
-const CORPUS_JSON: &str = include_str!("../data/common_ipa_transcriptions.json");
+// The IPA dictionary comes from the open-english-pronouncing-dictionary
+// crate (a.k.a. OpenEPD). That crate carries the data and a thin loader;
+// we just point at its embedded constant so the binary still has zero
+// on-disk dependencies.
+use open_english_pronouncing_dictionary::CORPUS_JSON;
 
 const USAGE: &str = "\
 madgab — Mad Gab puzzle generator

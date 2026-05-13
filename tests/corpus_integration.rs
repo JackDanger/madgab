@@ -7,8 +7,7 @@
 //! rebuild could silently break.
 
 use madgab::{Generator, GeneratorConfig, SearchMode};
-
-const CORPUS_JSON: &str = include_str!("../data/common_ipa_transcriptions.json");
+use open_english_pronouncing_dictionary::CORPUS_JSON;
 
 /// Generator with the full corpus loaded — no rarity cap. The
 /// integration tests run probes against rare words like "dupe"
