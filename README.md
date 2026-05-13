@@ -49,13 +49,31 @@ cargo build --release
 ```
 madgab [options] <target phrase>
 
-  --top N            top N candidates (default 10)
-  --max-rarity R     drop corpus words rarer than R (default 20000)
-  --beam K           beam width during search (default 64)
-  --min-word-len N   skip clue words shorter than N IPA chars (default 2)
-  --transcribe       print target IPA and exit
+  --top N                  top N candidates (default 10)
+  --max-rarity R           drop corpus words rarer than R (default 20000)
+  --beam K                 beam width during search (default 64)
+  --min-word-len N         skip clue words shorter than N IPA chars (default 2)
+  --approximate            allow small phonetic substitutions (/t/→/d/,
+                           /ɪ/→/i/, etc.) — finds homophone-style clues that
+                           don't exactly cover the target's phonemes
+  --per-word-budget COST   approximate mode: max sub cost per clue word
+                           (default 0.5)
+  --total-budget COST      approximate mode: max sub cost across the clue
+                           (default 1.5)
+  --transcribe             print target IPA and exit
   --help
 ```
+
+### Search modes
+
+**Exact** (default) — each clue word's IPA must exactly tile a span of
+the target's IPA. Same phonemes, different words.
+
+**Approximate** (`--approximate`) — each clue word's IPA may differ from
+its span by a budgeted amount of phonetic-substitution cost. Finds
+homophone-style clues: for "I love you" exact mode produces
+`"i. le vue"`, `"eye le view"`; approximate mode finds `"i'll have yu"`.
+See `src/lib.rs::SearchMode` for the underlying mechanism.
 
 ## Architecture
 
